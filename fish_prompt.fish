@@ -35,6 +35,7 @@ set -q color_user_str; or set color_user_str yellow
 set -q color_dir_bg; or set color_dir_bg blue
 set -q color_dir_str; or set color_dir_str black
 set -q color_hg_changed_bg; or set color_hg_changed_bg yellow
+set -q color_hg_changed_bg_2; or set color_hg_changed_bg_2 bryellow
 set -q color_hg_changed_str; or set color_hg_changed_str black
 set -q color_hg_bg; or set color_hg_bg green
 set -q color_hg_str; or set color_hg_str black
@@ -171,44 +172,50 @@ end
 function prompt_hg -d "Display mercurial state"
   set -l branch
   set -l state
-  if command hg id >/dev/null 2>&1
-      set branch (command hg id -b)
-      set state (hg_get_state)
-      set revision (command hg id -n)
-      set branch_symbol \uE0A0
-      if [ "$state" = "0" ]
-          prompt_segment $color_hg_changed_bg $color_hg_changed_str "$branch_symbol $branch:$revision ±"
-      else
-          prompt_segment $color_hg_bg $color_hg_str "$branch_symbol $branch:$revision"
+  set -l revision
+  if set -l hg_info (chg summary 2>/dev/null)
+    for hg_info_part in $hg_info
+      set -l hg_info_part_split (string trim (string split -m 1 ':' -- "$hg_info_part"))
+      switch $hg_info_part_split[1]
+        case parent
+          set -l revision_list (string split -m 1 ':' -- $hg_info_part_split[2])
+          set revision $revision_list[1]
+        case branch
+          set branch $hg_info_part_split[2]
+        case commit
+          set state $hg_info_part_split[2]
       end
+    end
+    set branch_symbol \uE0A
+
+    if [ "$state" != "(clean)" ]
+        prompt_segment $color_hg_changed_bg $color_hg_changed_str "$branch_symbol $branch:$revision"
+        prompt_segment $color_hg_changed_bg_2 $color_hg_changed_str "$state"
+    else
+        prompt_segment $color_hg_bg $color_hg_str "$branch_symbol $branch:$revision"
+    end
   end
 end
 
-function hg_get_state -d "Get mercurial working directory state"
-  if hg status | grep --quiet -e "^[A|M|R|!|?]"
-    echo 0
-  else
-    echo 1
-  end
-end
-
-
-function prompt_git -d "Display the current git state"
+function prompt_git -d "Display the current git state unless in ignored folder"
   set -l ref
   set -l dirty
   if command git rev-parse --is-inside-work-tree >/dev/null 2>&1
-    set dirty (parse_git_dirty)
-    set ref (command git symbolic-ref HEAD 2> /dev/null)
-    if [ $status -gt 0 ]
-      set -l branch (command git show-ref --head -s --abbrev |head -n1 2> /dev/null)
-      set ref "➦ $branch "
-    end
-    set branch_symbol \uE0A0
-    set -l branch (echo $ref | sed  "s-refs/heads/-$branch_symbol -")
-    if [ "$dirty" != "" ]
-      prompt_segment $color_git_dirty_bg $color_git_dirty_str "$branch $dirty"
-    else
-      prompt_segment $color_git_bg $color_git_str "$branch $dirty"
+    if not command git check-ignore . >/dev/null 2>&1
+      set dirty (parse_git_dirty)
+      set ref (command git symbolic-ref HEAD 2> /dev/null)
+      if [ $status -gt 0 ]
+        set -l branch (command git show-ref --head -s --abbrev |head -n1 2> /dev/null)
+        set ref "➦ $branch "
+      end
+      set branch_symbol \uE0A0
+      set -l branch (echo $ref | sed  "s-refs/heads/-$branch_symbol -")
+      if [ "$dirty" != "" ]
+        prompt_segment $color_git_dirty_bg $color_git_dirty_str "$branch"
+        prompt_segment $color_hg_changed_bg_2 $color_hg_changed_str "$dirty"
+      else
+        prompt_segment $color_git_bg $color_git_str "$branch $dirty"
+      end
     end
   end
 end
